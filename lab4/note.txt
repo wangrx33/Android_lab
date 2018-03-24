@@ -1,0 +1,7 @@
+1. 麻蛋，AndroidManifest.xml里不带报错的。。
+
+2.不同商品不同次数不同通知。
+
+3.eventbus 事件类直接用goods
+
+4.

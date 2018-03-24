@@ -1,0 +1,511 @@
+
+import android.Manifest;
+import android.animation.ObjectAnimator;
+import android.app.Activity;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
+import android.media.MediaPlayer;
+import android.os.Environment;
+import android.os.HandlerThread;
+import android.os.IBinder;
+import android.os.Message;
+import android.os.Parcel;
+import android.os.RemoteException;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.app.ServiceCompat;
+import android.support.v4.content.ContextCompat;
+import android.support.v7.app.AppCompatActivity;
+import android.os.Bundle;
+import android.support.v7.widget.LinearLayoutCompat;
+import android.view.View;
+import android.view.animation.LinearInterpolator;
+import android.widget.Button;
+import android.widget.ImageView;
+import android.widget.SeekBar;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Objects;
+import java.util.Timer;
+import java.util.TimerTask;
+import android.os.Handler;
+
+public class MainActivity extends AppCompatActivity {
+
+    //private MediaPlayer mediaPlayer = new MediaPlayer();
+    private Button play;
+    private Button stop;
+    private Button quit;
+    private SeekBar seekBar;
+    private TextView cur;
+    private TextView dur;
+    private IBinder mBinder;
+    private TextView status;
+    private boolean times = true;
+    private Timer mTimer;
+    private TimerTask mTimerTask;
+    private static boolean hasPermission = false;
+    private static String[] PERMISSIONS_STORAGE = { "android.permission.READ_EXTERNAL_STORAGE"};
+
+    private ObjectAnimator animator;
+    private ImageView pic;
+    private ServiceConnection sc;
+    private HandlerThread mthread;
+    private Handler mCheckHandler;
+    private Handler mHandler = new Handler();
+
+    public static void verifyStoragePermissions(Activity paramActivity)
+    {
+        try{
+            //检测是否有读取的权限
+            int permission = ActivityCompat.checkSelfPermission(paramActivity,"android.permission.READ_EXTERNAL_STORAGE");
+            if(permission != PackageManager.PERMISSION_GRANTED){
+                //没有读取的权限，去申请读取的权限，会弹出对话框
+                ActivityCompat.requestPermissions(paramActivity,PERMISSIONS_STORAGE,1);
+            }
+            else{
+                hasPermission = true;
+            }
+        }
+        catch (Exception localException)
+        {
+            localException.printStackTrace();
+        }
+    }
+
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        verifyStoragePermissions(this);
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        //动态申请权限
+        /*if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+        } else {
+            //initMediaPlayer();//初始化播放器 MediaPlayer
+        }*/
+
+        //findView
+        this.play = (Button) findViewById(R.id.play);
+        this.stop = (Button) findViewById(R.id.stop);
+        this.quit = (Button)findViewById(R.id.quit);
+        this.seekBar = (SeekBar) findViewById(R.id.jdt);
+        this.cur = (TextView) findViewById(R.id.start);
+        this.dur = (TextView) findViewById(R.id.end);
+        status = (TextView) findViewById(R.id.status);
+        pic = (ImageView) findViewById(R.id.pic);
+
+        //绑定bindService，保持与service的通信
+
+        //绑定成功后回调onServiceConnected函数，实现绑定
+
+        sc = new ServiceConnection() {
+            @Override
+            public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+                mBinder = iBinder;
+            }
+
+            @Override
+            public void onServiceDisconnected(ComponentName componentName) {
+                sc = null;
+            }
+        };
+
+        Intent localIntent = new Intent(MainActivity.this,MusicService.class);
+        startService(localIntent);
+        bindService(localIntent,sc, Context.BIND_AUTO_CREATE);
+
+
+        //动画，图片旋转
+        animator = ObjectAnimator.ofFloat(pic,"rotation",0,360);
+        animator.setTarget(pic);
+        animator.setInterpolator(new LinearInterpolator());
+        animator.setRepeatCount(ObjectAnimator.INFINITE);
+        animator.setDuration(20000);
+        animator.setRepeatMode(ObjectAnimator.RESTART);
+
+
+       Thread mThread = new Thread(){
+            @Override
+            public void run(){
+                while(true){
+                    try{
+                        Thread.sleep(100);
+                    }
+                    catch(InterruptedException e){
+                        e.printStackTrace();
+                    }
+                    if(sc != null && hasPermission == true)
+                        mHandler.obtainMessage(123).sendToTarget();
+                }
+            }
+        };
+        mThread.start();
+
+        final Handler mHandler = new Handler()
+        {
+            @Override
+            public void handleMessage(Message msg){
+                super.handleMessage(msg);
+                switch (msg.what){
+                    case 123:
+
+                        try {
+                            int code = 104;
+                            Parcel data = Parcel.obtain();
+                            Parcel reply = Parcel.obtain();
+                            mBinder.transact(code,data,reply,0);
+                        } catch (RemoteException e) {
+                            e.printStackTrace();
+                        }
+
+                        break;
+
+                }
+            }
+        };
+
+
+        //总时长
+        /*dur.setText(convert(mediaPlayer.getDuration()));
+
+        //设置进度条
+        mTimer = new Timer();
+        //由于Android没有提供播放时间反馈方法，所以只能使用定时器或者线程来进行播放反馈。即每隔一定时间来检查播放进度，按照此进度来调节SeekBar。
+        mTimerTask = new TimerTask(){
+            @Override
+            public void run(){
+                if(mediaPlayer != null)
+                {
+                    seekBar.setProgress(mediaPlayer.getCurrentPosition());
+
+                }
+
+            }
+        };
+        mTimer.schedule(mTimerTask,0,10);
+
+        seekBar.setMax(mediaPlayer.getDuration());
+        //调节进度条
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int i, boolean b){
+
+            }
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar){
+
+            }
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar){
+                mediaPlayer.seekTo(seekBar.getProgress());
+            }
+        });*/
+
+        //播放
+        play.setOnClickListener(new View.OnClickListener()
+        {
+            @Override
+            public void onClick(View v){
+
+                try{
+                    if(mediaPlayer != null){
+                        int code = 101;
+                        Parcel data = Parcel.obtain();
+                        Parcel reply = Parcel.obtain();
+                        mBinder.transact(code,data,reply,0);
+                        if(mediaPlayer.isPlaying()){
+
+                            play.setText("Play");
+                            status.setText("Paused");
+                            animator.pause();
+                        }
+                        else{
+
+                            play.setText("Pause");
+                            status.setText("Playing");
+                            animator.start();
+                        }
+                    }
+                }
+                catch (RemoteException e){
+                    e.printStackTrace();
+                }
+            }
+        });
+        //停止
+        stop.setOnClickListener(new View.OnClickListener(){
+            @Override
+            public void onClick(View v){
+                try{
+                    if(mediaPlayer != null){
+                        mediaPlayer.stop();
+                        mediaPlayer.reset();
+                        initMediaPlayer();
+                        seekBar.setProgress(mediaPlayer.getCurrentPosition());
+                        play.setText("Play");
+                        status.setText("Stopped");
+                        animator.end();
+                    }
+                }
+                catch (Exception e){
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        //退出
+        quit.setOnClickListener(new View.OnClickListener(){
+            @Override
+            public void onClick(View v){
+                //停止服务，解除绑定
+                unbindService(sc);
+                sc = null;
+                try
+                {
+                    MainActivity.this.finish();
+                    System.exit(0);
+                }
+                catch (Exception localException)
+                {
+                        localException.printStackTrace();
+                }
+            }
+        });
+
+
+
+    }
+
+
+
+    private void initMediaPlayer(){
+        try{
+            //File file = new File(Environment.getExternalStorageDirectory(),"/data/melt.mp3");
+            //手机内置sd卡
+            //mediaPlayer.setDataSource(Environment.getExternalStorageDirectory()+"/Android/melt.mp3");
+            //虚拟机内存
+            mediaPlayer.setDataSource("/data/melt.mp3");
+            mediaPlayer.setLooping(true);
+            mediaPlayer.prepare();
+        }
+        catch (Exception e){
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode){
+            case 1:
+                if(grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED){
+                    initMediaPlayer();
+                }else{
+                    Toast.makeText(this, "拒绝权限，将无法使用程序。", Toast.LENGTH_LONG).show();
+                    finish();
+                }
+                break;
+            default:
+        }
+
+    }
+
+
+
+    @Override
+    protected void onDestroy(){
+        super.onDestroy();
+        if(mediaPlayer != null){
+            mediaPlayer.stop();
+            mediaPlayer.release();
+            mediaPlayer = null;
+        }
+    }
+
+
+
+    //convert，用来把获得的媒体文件时长转换为int
+    private String convert(int duration){
+        //总秒
+        int second=duration/1000;
+        //总分
+        int minute=second/60;
+        //剩余秒数
+        int miao=second%60;
+        return minute+":"+miao;
+
+    }
+
+}
+
+
+
+import android.app.Service;
+import android.content.Intent;
+import android.media.MediaPlayer;
+import android.os.Binder;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.IBinder;
+import android.os.Parcel;
+import android.os.RemoteException;
+import android.widget.TextView;
+
+import java.io.IOException;
+
+/**
+ * Created by peter on 2017/11/9.
+ */
+
+public class MusicService extends Service {
+    private IBinder binder = new MyBinder();
+    private MediaPlayer mp;
+    private int status = new Integer(3).intValue();
+    private TextView cur;
+
+
+    //播放
+    private void play(){
+        if(this.mp.isPlaying()){
+            this.mp.pause();
+        }
+        else{
+            mp.start();
+        }
+    }
+
+    //停止
+    private void stop(){
+        if(this.mp != null){
+            this.mp.stop();
+            this.status = -1;
+        }
+        try{
+            this.mp.prepare();
+            this.mp.seekTo(0);
+            return;
+        }
+        catch (Exception localException){
+            while(true){
+                localException.printStackTrace();
+            }
+        }
+    }
+
+    //退出
+    private void quit(){
+        if(this.mp != null){
+            this.mp.stop();
+            this.status = -1;
+        }
+
+    }
+
+    private void update(){
+
+        cur.setText(convert(mp.getCurrentPosition()));
+    }
+
+    private String convert(int duration){
+        //总秒
+        int second=duration/1000;
+        //总分
+        int minute=second/60;
+        //剩余秒数
+        int miao=second%60;
+        return minute+":"+miao;
+
+    }
+
+    //获取当前播放时间
+    public int getCurrentTime(){
+        return this.mp.getCurrentPosition();
+    }
+
+    //获取播放时长
+    public int getDuration(){
+        return this.mp.getDuration();
+    }
+
+    //进程间通信
+    public IBinder onBind(Intent paramIntent){
+        return this.binder;
+    }
+
+    public void onCreate(){
+        super.onCreate();
+        this.mp = new MediaPlayer();
+
+            try{
+                this.mp.setDataSource(Environment.getExternalStorageDirectory() + "/melt.mp3");
+                this.mp.prepare();
+                this.mp.setLooping(true);
+                super.onCreate();
+                return;
+            }
+            catch (Exception localException) {
+                while (true){
+                    localException.printStackTrace();
+                }
+            }
+
+
+    }
+
+    public void onDestroy(){
+        super.onDestroy();
+        if(this.mp != null)
+        {
+            this.mp.stop();
+            this.mp.reset();
+            this.mp.release();
+        }
+    }
+
+    public int retStatus(){
+        return this.status;
+    }
+
+    public void setCurrent(int paramInt){
+        this.mp.seekTo(paramInt);
+    }
+
+    public class MyBinder extends Binder {
+       @Override
+        protected boolean onTransact(int paramInt1, Parcel paramParcel1, Parcel paramParcel2, int paramInt2)
+            throws RemoteException
+        {
+            switch (paramInt1){
+                //default:
+                case 101:   play();//播放按钮，服务处理函数
+                    break;
+                case 102:   stop();//停止按钮，服务处理函数
+                    break;
+                case 103:   quit();//退出按钮，服务处理函数
+                    break;
+                case 104:   update();//界面刷新，服务返回数据函数
+                    break;
+                case 105://拖动进度条，服务处理函数
+                    break;
+                //case 106://
+                  //  break;
+            }
+            return super.onTransact(paramInt1, paramParcel1, paramParcel2, paramInt2);
+
+        }
+
+    }
+
+
+}
+
+
+
